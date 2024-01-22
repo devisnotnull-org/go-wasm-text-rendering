@@ -1,0 +1,153 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
+	"io"
+	"log"
+	"math"
+	"net/http"
+	"os"
+
+	"github.com/golang/freetype/truetype"
+	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
+)
+
+var text = []string{
+	"this", "is", "an", "example", "of", "using", "golang.org/x/image/font", "and", "golang.org/x/image/math/fixed", "to", "draw", "text", "on", "an", "image.", "it", "is", "a", "little", "verbose", "but", "works", "well", "and", "is", "easy", "to", "understand.",
+}
+
+func getFont(valueDomFont string) string {
+	switch valueDomFont {
+	case "freedom":
+		//fmt.Println("freedom")
+		return "http://localhost:8080/assets/freedom.ttf"
+	case "shortbaby":
+		//fmt.Println("shortbaby")
+		return "http://localhost:8080/assets/shortbaby.ttf"
+	case "crustyrock":
+		//fmt.Println("crustyrock")
+		return "http://localhost:8080/assets/crustyrock.ttf"
+
+	default:
+		// freebsd, openbsd,
+		// plan9, windows...
+		//fmt.Printf("%s.\n", valueDomFont)
+		return "http://localhost:8080/assets/luximr.ttf"
+	}
+}
+
+func main() {
+
+	res, err := http.Get(getFont("luximr"))
+	if err != nil {
+		fmt.Printf("error making http request: %s\n", err)
+	}
+
+	fmt.Printf("client: got response!\n")
+	fmt.Printf("client: status code: %d\n", res.StatusCode)
+
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+
+	f, err := truetype.Parse(body)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// Draw the background and the guidelines.
+	fg, bg := image.Black, image.White
+	//ruler := color.RGBA{0xdd, 0xdd, 0xdd, 0xff}
+	if true {
+		fg, bg = image.White, image.Black
+		//ruler = color.RGBA{0x22, 0x22, 0x22, 0xff}
+	}
+	const imgW, imgH = 640, 480
+	rgba := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
+	draw.Draw(rgba, rgba.Bounds(), bg, image.ZP, draw.Src)
+	/**
+		for i := 0; i < 500; i++ {
+			rgba.Set(10, 10+i, ruler)
+			rgba.Set(10+i, 10, ruler)
+		}
+	        **/
+
+	// Draw the text.
+	h := font.HintingNone
+	switch "full" {
+	case "full":
+		h = font.HintingFull
+	}
+
+	size := 12.0
+	dpi := 72.0
+	spacing := 1.5
+	title := "Hello, World!"
+
+	d := &font.Drawer{
+		Dst: rgba,
+		Src: fg,
+		Face: truetype.NewFace(f, &truetype.Options{
+			Size:    size,
+			DPI:     dpi,
+			Hinting: h,
+		}),
+	}
+
+	y := 10 + int(math.Ceil(size*dpi/72))
+
+	dy := int(math.Ceil(size * spacing * dpi / 72))
+
+	d.Dot = fixed.Point26_6{
+		X: (fixed.I(imgW) - d.MeasureString(title)) / 2,
+		Y: fixed.I(y),
+	}
+
+	d.DrawString(title)
+
+	y += dy
+	x := 10.0
+
+	dx := int(math.Ceil(size * dpi / dpi))
+
+	for _, s := range text {
+		measureString := d.MeasureString(s).Ceil()
+
+		if (x + float64(measureString)) > 640 {
+			x = 10.0
+			y += dy
+		}
+
+		d.Dot = fixed.P(int(x), y)
+
+		d.DrawString(s)
+
+		x += (float64(measureString) + float64(dx))
+	}
+
+	// Save that RGBA image to disk.
+	outFile, err := os.Create("out.png")
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	defer outFile.Close()
+	b := bufio.NewWriter(outFile)
+	err = png.Encode(b, rgba)
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	err = b.Flush()
+	if err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+	fmt.Println("Wrote out.png OK.")
+}

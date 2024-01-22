@@ -1,0 +1,382 @@
+package main
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"syscall/js"
+
+	"github.com/golang/freetype"
+)
+
+func prettyJson(input string) (string, error) {
+	var raw any
+	if err := json.Unmarshal([]byte(input), &raw); err != nil {
+		return "", err
+	}
+	pretty, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(pretty), nil
+}
+
+func generateImage() *bytes.Reader {
+	width := 200
+	height := 100
+
+	upLeft := image.Point{0, 0}
+	lowRight := image.Point{width, height}
+
+	img := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+	// Colors are defined by Red, Green, Blue, Alpha uint8 values.
+	cyan := color.RGBA{100, 200, 200, 0xff}
+	green := color.RGBA{152, 251, 152, 0xff}
+
+	// Set color for each pixel.
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			switch {
+			case x < width/2 && y < height/2: // upper left quadrant
+				img.Set(x, y, cyan)
+
+			case x < width/2 && y > height/2: // upper left quadrant
+				img.Set(x, y, green)
+
+			case x >= width/2 && y >= height/2: // lower right quadrant
+				img.Set(x, y, color.White)
+
+			default:
+				// Use zero value.
+			}
+		}
+	}
+
+	// Encode as PNG.
+	f, _ := os.Create("image.png")
+	png.Encode(f, img)
+
+	buf := new(bytes.Buffer)
+	send_s3 := buf.Bytes()
+
+	return bytes.NewReader(send_s3)
+}
+
+func generateImageBytes() []byte {
+	width := 200
+	height := 100
+
+	upLeft := image.Point{0, 0}
+	lowRight := image.Point{width, height}
+
+	img := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+	// Colors are defined by Red, Green, Blue, Alpha uint8 values.
+	cyan := color.RGBA{100, 200, 200, 0xff}
+	green := color.RGBA{152, 251, 152, 0xff}
+
+	// Set color for each pixel.
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			switch {
+			case x < width/2 && y < height/2: // upper left quadrant
+				img.Set(x, y, cyan)
+
+			case x < width/2 && y > height/2: // upper left quadrant
+				img.Set(x, y, green)
+
+			case x > width/2 && y > height/2: // upper left quadrant
+				img.Set(x, y, cyan)
+
+			case x > width/2 && y < height/2: // upper left quadrant
+				img.Set(x, y, green)
+
+			case x >= width/2 && y >= height/2: // lower right quadrant
+				img.Set(x, y, color.White)
+
+			default:
+				// Use zero value.
+			}
+		}
+	}
+
+	buffer := new(bytes.Buffer)
+	png.Encode(buffer, img)
+
+	return buffer.Bytes()
+}
+
+func jsonWrapper() js.Func {
+	jsonFunc := js.FuncOf(func(this js.Value, args []js.Value) any {
+
+		fmt.Println("STARTINGGGGGGGG")
+
+		if len(args) != 1 {
+			return errors.New("Invalid no of arguments passed")
+		}
+		jsDoc := js.Global().Get("document")
+		if !jsDoc.Truthy() {
+			return errors.New("Unable to get document object")
+		}
+		jsonOuputTextArea := jsDoc.Call("getElementById", "jsonoutput")
+		if !jsonOuputTextArea.Truthy() {
+			return errors.New("Unable to get output text area")
+		}
+		inputJSON := args[0].String()
+		fmt.Printf("input %s\n", inputJSON)
+		pretty, err := prettyJson(inputJSON)
+		if err != nil {
+			errStr := fmt.Sprintf("unable to parse JSON. Error %s occurred\n", err)
+			return errors.New(errStr)
+		}
+		jsonOuputTextArea.Set("value", pretty)
+
+		jsonSampleTextArea := jsDoc.Call("getElementById", "jsonsample")
+		if !jsonSampleTextArea.Truthy() {
+			return errors.New("Unable to get output text area")
+		}
+		jsonSampleTextArea.Set("value", "THIS IS A SAMPLE JSO./N")
+
+		imageDom := jsDoc.Call("getElementById", "imageNew")
+		imageDom.Set("src", "data:image/png;base64,"+base64.StdEncoding.EncodeToString(generateImageBytes()))
+
+		fmt.Print(len(generateImageBytes()))
+		fmt.Print("imageDom: ", base64.StdEncoding.EncodeToString(generateImageBytes()), "\n")
+
+		/**
+		                	var textLarge = []string{
+				"’Twas brillig, and the slithy toves Did gyre and gimble in the wabe All mimsy were the borogoves And the mome raths outgrabe.",
+			}
+
+						go func() {
+							height := 500
+							width := 500
+
+							res, err := http.Get("http://localhost:8080/assets/luximr.ttf")
+							if err != nil {
+								fmt.Printf("error making http request: %s\n", err)
+							}
+
+							fmt.Printf("client: got response!\n")
+							fmt.Printf("client: status code: %d\n", res.StatusCode)
+
+							defer res.Body.Close()
+							body, err := io.ReadAll(res.Body)
+
+							f, err := freetype.ParseFont(body)
+
+							// Initialize the context.
+							fg, bg := image.Black, image.Transparent
+
+							// ruler := color.RGBA{0xdd, 0xdd, 0xdd, 0xdd}
+
+							rgba := image.NewRGBA(image.Rect(0, 0, width, height))
+
+							draw.Draw(rgba, image.Rectangle{Min: image.Point{X: 0, Y: 0}, Max: image.Point{X: 500, Y: 500}}, bg, image.Point{X: 10, Y: 10}, draw.Src)
+
+							c := freetype.NewContext()
+							c.SetDPI(200)
+							c.SetFont(f)
+							c.SetFontSize(10)
+							c.SetClip(rgba.Bounds())
+
+							fmt.Printf(rgba.Bounds().String())
+							fmt.Printf(image.Rectangle{Min: image.Point{X: 0, Y: 0}, Max: image.Point{X: 500, Y: 500}}.String())
+
+							c.SetDst(rgba)
+							c.SetSrc(fg)
+
+							// Draw the text.
+							pt := freetype.Pt(10, 10+int(c.PointToFixed(10)>>6))
+
+							for _, s := range textLarge {
+								_, err = c.DrawString(s, pt)
+								if err != nil {
+									log.Println(err)
+									return
+								}
+								pt.Y += c.PointToFixed(10 * 10)
+							}
+
+							buffer := new(bytes.Buffer)
+							png.Encode(buffer, rgba)
+
+							bufferPart := buffer.Bytes()
+
+							imageDom := jsDoc.Call("getElementById", "textRender")
+							imageDom.Set("src", "data:image/png;base64,"+base64.StdEncoding.EncodeToString(bufferPart))
+
+							fmt.Print(len(bufferPart))
+							fmt.Print("imageDom: ", base64.StdEncoding.EncodeToString(bufferPart), "\n")
+
+						}()
+				                **/
+		///
+
+		return nil
+	})
+	return jsonFunc
+}
+
+func getFont(valueDomFont string) string {
+	switch valueDomFont {
+	case "freedom":
+		//fmt.Println("freedom")
+		return "http://localhost:8080/assets/freedom.ttf"
+	case "shortbaby":
+		//fmt.Println("shortbaby")
+		return "http://localhost:8080/assets/shortbaby.ttf"
+	case "crustyrock":
+		//fmt.Println("crustyrock")
+		return "http://localhost:8080/assets/crustyrock.ttf"
+
+	default:
+		// freebsd, openbsd,
+		// plan9, windows...
+		//fmt.Printf("%s.\n", valueDomFont)
+		return "http://localhost:8080/assets/luximr.ttf"
+	}
+}
+
+func renderText() js.Func {
+
+	jsonFunc := js.FuncOf(func(this js.Value, args []js.Value) any {
+
+		if len(args) != 1 {
+			return errors.New("Invalid no of arguments passed")
+		}
+
+		jsDoc := js.Global().Get("document")
+
+		if !jsDoc.Truthy() {
+			return errors.New("Unable to get document object")
+		}
+
+		inputString := args[0].String()
+
+		fontTypeDom := jsDoc.Call("getElementById", "font")
+		valueDomFont := fontTypeDom.Get("value")
+
+		fontSizeDom := jsDoc.Call("getElementById", "fontSize")
+		valueDomSizeFont := fontSizeDom.Get("value").String()
+
+		/**
+				number, err := strconv.Atoi(valueDomSizeFont)
+				if err != nil {
+					fmt.Println("Error:", err)
+				}
+		                **/
+
+		go func() {
+			height := 500
+			width := 500
+
+			// line2 := "The quick brown fox jumps over the lazy dog"
+			var fontSize float64 = 10
+
+			if sss, err := strconv.ParseFloat(valueDomSizeFont, 32); err == nil {
+				fmt.Println(sss) // 3.1415927410125732
+				fontSize = sss
+			}
+
+			res, err := http.Get(getFont(valueDomFont.String()))
+			if err != nil {
+				fmt.Printf("error making http request: %s\n", err)
+			}
+
+			fmt.Printf("client: got response!\n")
+			fmt.Printf("client: status code: %d\n", res.StatusCode)
+
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+
+			f, err := freetype.ParseFont(body)
+
+			// Initialize the context.
+			fg, bg := image.Black, image.Transparent
+
+			// ruler := color.RGBA{0xdd, 0xdd, 0xdd, 0xdd}
+
+			rgba := image.NewRGBA(image.Rect(0, 0, width, height))
+
+			draw.Draw(rgba, image.Rectangle{Min: image.Point{X: 0, Y: 0}, Max: image.Point{X: width, Y: height}}, bg, image.Point{X: int(fontSize), Y: int(fontSize)}, draw.Src)
+
+			///
+
+			c := freetype.NewContext()
+			c.SetDPI(400)
+			c.SetFont(f)
+			c.SetFontSize(fontSize)
+			c.SetClip(rgba.Bounds())
+
+			c.SetDst(rgba)
+			c.SetSrc(fg)
+
+			//
+
+			c1 := freetype.NewContext()
+			c1.SetDPI(400)
+			c1.SetFont(f)
+			c1.SetFontSize(fontSize)
+			c1.SetClip(rgba.Bounds())
+
+			c1.SetDst(rgba)
+			c1.SetSrc(fg)
+
+			// Draw the text.
+
+			pt := freetype.Pt(int(fontSize), int(fontSize)+int(c.PointToFixed(fontSize)>>6))
+			pt1 := freetype.Pt(int(fontSize), int(fontSize)+int(c1.PointToFixed(fontSize)>>6))
+
+			_, err = c.DrawString(inputString, pt)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			_, err = c1.DrawString("SAMPKDPKD", pt1)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+
+			pt.Y += c.PointToFixed(fontSize * fontSize)
+
+			buffer := new(bytes.Buffer)
+			png.Encode(buffer, rgba)
+
+			bufferPart := buffer.Bytes()
+
+			imageDom := jsDoc.Call("getElementById", "textRender")
+			imageDom.Set("src", "data:image/png;base64,"+base64.StdEncoding.EncodeToString(bufferPart))
+
+		}()
+		///
+
+		return nil
+	})
+	return jsonFunc
+}
+
+func main() {
+	generateImage()
+	fmt.Println("Go Web Assembly")
+	js.Global().Set("formatJSON", jsonWrapper())
+	js.Global().Set("renderText", renderText())
+
+	// We need to keep the application running so we keep waiting on a channel
+	<-make(chan bool)
+}

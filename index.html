@@ -1,0 +1,205 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script src="wasm_exec.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      #container {
+        position: absolute;
+        left: 0;
+        top: 0; /* set these so Chrome doesn't return 'auto' from getComputedStyle */
+        background: rgba(255, 255, 255, 0.66);
+        border: 2px solid rgba(0, 0, 0, 0.5);
+        border-radius: 4px;
+        padding: 8px;
+        width: 500px;
+        height: 500px;
+      }
+
+      #textRender {
+        width: 100%;
+        height: 100%;
+        user-select: none;
+      }
+
+      .move {
+        position: absolute;
+        bottom: -50px;
+      }
+    </style>
+    <script>
+      const go = new Go();
+      WebAssembly.instantiateStreaming(
+        fetch("build.wasm"),
+        go.importObject,
+      ).then((result) => {
+        go.run(result.instance);
+        renderText("Text");
+      });
+    </script>
+  </head>
+
+  <body>
+    <header class="bg-white">
+      <nav
+        class="flex items-center justify-between p-6 lg:px-8"
+        aria-label="Global"
+      >
+        <div class="flex lg:flex-1">
+          <a href="#" class="-m-1.5 p-1.5">
+            <span class="sr-only"></span>
+            <img
+              class="h-8 w-auto"
+              src="https://tailwindui.com/img/logos/mark.svg?color=indigo&shade=600"
+              alt=""
+            />
+          </a>
+        </div>
+        <div class="hidden lg:flex lg:gap-x-12">
+          <a href="#" class="text-sm font-semibold leading-6 text-gray-900"
+            >Github</a
+          >
+        </div>
+      </nav>
+    </header>
+
+	
+	<div class="bg-white py-24 sm:py-32">
+		<div class="mx-auto grid max-w-7xl gap-x-8 gap-y-20 px-6 lg:px-8 xl:grid-cols-3">
+
+			<div>
+				<textarea
+					id="jsoninput"
+					name="jsoninput"
+					cols="80"
+					rows="20"
+					onkeyup="textGenerator(this.value)"
+					class="block w-full resize-none border-0 bg-transparent py-1.5 text-gray-900 placeholder:text-gray-400 focus:ring-0 sm:text-sm sm:leading-6 border-2 border-gray-500 my-5 rounded-md"
+				></textarea>
+				<div>
+					<input type="number" id="width" name="width" min="1" class="block w-full resize-none border-0 bg-transparent py-1.5 text-gray-900 placeholder:text-gray-400 focus:ring-0 sm:text-sm sm:leading-6 border-2 border-gray-500 my-5 rounded-md" />
+					<input type="number" id="height" name="height" min="1" class="block w-full resize-none border-0 bg-transparent py-1.5 text-gray-900 placeholder:text-gray-400 focus:ring-0 sm:text-sm sm:leading-6 border-2 border-gray-500 my-5 rounded-md" />
+					<input type="number" id="fontSize" name="fontSize" min="1" cclass="block w-full resize-none border-0 bg-transparent py-1.5 text-gray-900 placeholder:text-gray-400 focus:ring-0 sm:text-sm sm:leading-6 border-2 border-gray-500 my-5 rounded-md"/>
+					<select name="font" id="font" class="block w-full resize-none border-0 bg-transparent py-1.5 text-gray-900 placeholder:text-gray-400 focus:ring-0 sm:text-sm sm:leading-6 border-2 border-gray-500 my-5 rounded-md">
+						<option value="freedom">freedom</option>
+						<option value="shortbaby">shortbaby</option>
+						<option value="crustyrock">crustyrock</option>
+					</select>
+				</div>
+			</div>
+			<div id="container" draggable="true">
+				<img id="textRender" src="" alt="golangbot" />
+				<div class="move">Move</div>
+			</div>
+
+		</div>
+	</div>
+				
+  </body>
+  <script>
+    function textGenerator(value) {
+      const json = document.getElementById("jsoninput").value;
+      var dm = document.getElementById("container");
+      const width = dm.style.width;
+      const height = dm.style.height;
+
+      renderText(value, width, height);
+    }
+
+    function drag_start(event) {
+      var style = window.getComputedStyle(event.target, null);
+      event.dataTransfer.setData(
+        "text/plain",
+        parseInt(style.getPropertyValue("left"), 10) -
+          event.clientX +
+          "," +
+          (parseInt(style.getPropertyValue("top"), 10) - event.clientY),
+      );
+    }
+
+    function drag_over(event) {
+      event.preventDefault();
+      return false;
+    }
+
+    function drop(event) {
+      var offset = event.dataTransfer.getData("text/plain").split(",");
+      var dm = document.getElementById("container");
+      dm.style.left = event.clientX + parseInt(offset[0], 10) + "px";
+      dm.style.top = event.clientY + parseInt(offset[1], 10) + "px";
+      event.preventDefault();
+      return false;
+    }
+
+    var dm = document.getElementById("container");
+
+    dm.addEventListener("dragstart", drag_start, false);
+    document.body.addEventListener("dragover", drag_over, false);
+    document.body.addEventListener("drop", drop, false);
+
+    const resizeObserver = new ResizeObserver(onResize);
+    resizeObserver.observe(document.querySelector("#container"));
+
+    // Make the DIV element draggable:
+    dragElement(dm);
+
+    function dragElement(elmnt) {
+      var pos1 = 0,
+        pos2 = 0,
+        pos3 = 0,
+        pos4 = 0;
+
+      elmnt.onmousedown = dragMouseDown;
+
+      function dragMouseDown(e) {
+        e = e || window.event;
+        e.preventDefault();
+        // get the mouse cursor position at startup:
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDragElement;
+        // call a function whenever the cursor moves:
+        document.onmousemove = elementDrag;
+      }
+
+      function elementDrag(e) {
+		const x = 500
+		const y = 500
+        e = e || window.event;
+        e.preventDefault();
+        // calculate the new cursor position:
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+
+		if((e.clientX < x) || (e.clientY > y)) {
+			return
+		}
+
+
+        // set the element's new position:
+        elmnt.style.top = elmnt.offsetTop - pos2 + "px";
+        elmnt.style.left = elmnt.offsetLeft - pos1 + "px";
+      }
+
+      function closeDragElement() {
+        // stop moving when mouse button is released:
+        document.onmouseup = null;
+        document.onmousemove = null;
+      }
+    }
+
+    function onResize(entries) {
+      console.log(entries);
+      const entry = entries[0];
+      const container = entry.target;
+      const width = entry.contentRect.width + "px";
+      const height = entry.contentRect.height + "px";
+
+      console.log("height", height);
+      console.log("width", height);
+    }
+  </script>
+</html>
